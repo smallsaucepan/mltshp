@@ -1,4 +1,4 @@
-from lib.utilities import base36decode
+from lib.utilities import base36decode, base36encode
 
 import tornado.web
 from .base import BaseHandler, require_membership
@@ -54,7 +54,58 @@ class IncomingHandler(BaseHandler):
             if len(sharedfiles) > 10:
                 older_link = "/incoming/before/%s" % sharedfiles[9].share_key
 
+        # Get most popular shared files 1, 2, 5 and 10 years ago. If no files
+        # that day, still returns a null (so always 4 results) and we handle
+        # the gap gracefully below.
+        timehop_tmp = Sharedfile.object_query("""
+            WITH target_dates AS (
+                SELECT 1 AS years_ago, CURDATE() - INTERVAL 1 YEAR AS target_date
+                UNION ALL
+                SELECT 2, CURDATE() - INTERVAL 2 YEAR
+                UNION ALL
+                SELECT 5, CURDATE() - INTERVAL 5 YEAR
+                UNION ALL
+                SELECT 10, CURDATE() - INTERVAL 10 YEAR
+            ),
+            ranked_posts AS (
+                SELECT
+                    t.years_ago,
+                    p.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY t.years_ago
+                        ORDER BY p.like_count DESC
+                    ) AS rn
+                FROM target_dates t
+                LEFT JOIN sharedfile p
+                    ON DATE(p.created_at) = t.target_date
+            )
+            SELECT *
+            FROM ranked_posts
+            WHERE rn = 1
+            ORDER BY years_ago;
+        """)
+
+        # Pass to the view: label, share_key of next shared_file, shared_file
+        # We use the share_key of next shared file to link into the incoming
+        # feed timeline with our target image at the top of the page.
+        timehop_sharedfiles = []
+        labels = ["1 year ago", "2 years ago", "5 years ago", "10 years ago"]
+        for i, label in enumerate(labels):
+            item = timehop_tmp[i] if timehop_tmp[i].id else None
+            if (item):
+                timehop_sharedfiles.append((label, self.__next_share_key(item), item))
+            else:
+                # Placeholder
+                timehop_sharedfiles.append((label, None, None))
+
         return self.render("incoming/index.html", sharedfiles=sharedfiles[0:10],
             current_user_obj=current_user_obj,
             older_link=older_link, newer_link=newer_link,
-            notifications_count=notifications_count)
+            notifications_count=notifications_count,
+            timehop_sharedfiles=timehop_sharedfiles)
+
+    # Return the share key of the next shared file.
+    def __next_share_key(self, sharedfile):
+        if sharedfile is None:
+            return None
+        return base36encode(sharedfile.id + 1)

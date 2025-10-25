@@ -36,6 +36,29 @@
         <div class="clear"><!-- --></div>
       </div>
 
+      <div class="timehop-block">
+          <h3>Top Posts of Yores</h3>
+          <div class="thumb-grid">
+          {% for label, next_share_key, sharedfile in timehop_sharedfiles %}
+            <div>
+                <h4>{{label}}</h4>
+                <div>
+                    {% if sharedfile %}
+                    <a href="/incoming/before/{{next_share_key}}">
+                        <img src="{{ sharedfile.thumbnail_url() }}"
+                            loading="lazy"
+                            decoding="async"
+                            alt="{{ escape(sharedfile.get_alt_text(raw=True) or 'No alt provided') }}">
+                    </a>
+                    {% else %}
+                    <div class="placeholder" ></div>
+                    {% end %}
+                </div>
+            </div>
+          {% end %}
+          </div>
+      </div>
+
       <div class="tip-block">
         <h3>Did You Know?</h3>
         <p>For shake views like this, you can use

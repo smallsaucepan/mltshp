@@ -56,33 +56,84 @@ class IncomingHandler(BaseHandler):
 
         # Get most popular shared files 1, 2, 5 and 10 years ago. If no files
         # that day, still returns a null (so always 4 results) and we handle
-        # the gap gracefully below.
+        # the gap gracefully below. Redundant union query to be super quick
+        # for large sharedfile table.
         timehop_tmp = Sharedfile.object_query("""
-            WITH target_dates AS (
-                SELECT 1 AS years_ago, CURDATE() - INTERVAL 1 YEAR AS target_date
-                UNION ALL
-                SELECT 2, CURDATE() - INTERVAL 2 YEAR
-                UNION ALL
-                SELECT 5, CURDATE() - INTERVAL 5 YEAR
-                UNION ALL
-                SELECT 10, CURDATE() - INTERVAL 10 YEAR
-            ),
-            ranked_posts AS (
-                SELECT
-                    t.years_ago,
-                    p.*,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY t.years_ago
-                        ORDER BY p.like_count DESC
-                    ) AS rn
-                FROM target_dates t
-                LEFT JOIN sharedfile p
-                    ON DATE(p.created_at) = t.target_date
+            (
+              SELECT *
+              FROM sharedfile
+              WHERE created_at >= CURDATE() - INTERVAL 1 YEAR
+                AND created_at < CURDATE() - INTERVAL 1 YEAR + INTERVAL 1 DAY
+              ORDER BY like_count DESC
+              LIMIT 1
             )
-            SELECT *
-            FROM ranked_posts
-            WHERE rn = 1
-            ORDER BY years_ago;
+            UNION ALL
+            (
+              SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM sharedfile
+                WHERE created_at >= CURDATE() - INTERVAL 1 YEAR
+                  AND created_at < CURDATE() - INTERVAL 1 YEAR + INTERVAL 1 DAY
+              )
+            )
+            UNION ALL
+            (
+              SELECT *
+              FROM sharedfile
+              WHERE created_at >= CURDATE() - INTERVAL 2 YEAR
+                AND created_at < CURDATE() - INTERVAL 2 YEAR + INTERVAL 1 DAY
+              ORDER BY like_count DESC
+              LIMIT 1
+            )
+            UNION ALL
+            (
+              SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM sharedfile
+                WHERE created_at >= CURDATE() - INTERVAL 2 YEAR
+                  AND created_at < CURDATE() - INTERVAL 2 YEAR + INTERVAL 1 DAY
+              )
+            )
+            UNION ALL
+            (
+              SELECT *
+              FROM sharedfile
+              WHERE created_at >= CURDATE() - INTERVAL 5 YEAR
+                AND created_at < CURDATE() - INTERVAL 5 YEAR + INTERVAL 1 DAY
+              ORDER BY like_count DESC
+              LIMIT 1
+            )
+            UNION ALL
+            (
+              SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM sharedfile
+                WHERE created_at >= CURDATE() - INTERVAL 5 YEAR
+                  AND created_at < CURDATE() - INTERVAL 5 YEAR + INTERVAL 1 DAY
+              )
+            )
+            UNION ALL
+            (
+              SELECT *
+              FROM sharedfile
+              WHERE created_at >= CURDATE() - INTERVAL 10 YEAR
+                AND created_at < CURDATE() - INTERVAL 10 YEAR + INTERVAL 1 DAY
+              ORDER BY like_count DESC
+              LIMIT 1
+            )
+            UNION ALL
+            (
+              SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM sharedfile
+                WHERE created_at >= CURDATE() - INTERVAL 10 YEAR
+                  AND created_at < CURDATE() - INTERVAL 10 YEAR + INTERVAL 1 DAY
+              )
+            );
         """)
 
         # Pass to the view: label, share_key of next shared_file, shared_file
@@ -91,7 +142,7 @@ class IncomingHandler(BaseHandler):
         timehop_sharedfiles = []
         labels = ["1 year ago", "2 years ago", "5 years ago", "10 years ago"]
         for i, label in enumerate(labels):
-            item = timehop_tmp[i] if timehop_tmp[i].id else None
+            item = timehop_tmp[i] if timehop_tmp[i] and timehop_tmp[i].id else None
             if (item):
                 timehop_sharedfiles.append((label, self.__next_share_key(item), item))
             else:
